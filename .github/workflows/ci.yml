@@ -1,8 +1,6 @@
-name: Generate Stats Images
+name: Green Contributions (Friday Random Commits)
 
 on:
-  push:
-    branches: [ main ]
   schedule:
     - cron: "5 0 * * *"   # jalan tiap hari jam 00:05 UTC
   workflow_dispatch:
@@ -11,55 +9,46 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  commit:
     runs-on: ubuntu-latest
 
     steps:
-    # Checkout repo
-    - uses: actions/checkout@v3
-
-    # Setup Python (boleh diganti versi lain kalau perlu)
-    - name: Set up Python
-      uses: actions/setup-python@v4
+    - name: Checkout repository
+      uses: actions/checkout@v3
       with:
-        python-version: '3.11'
-        cache: 'pip'
+        fetch-depth: 0
 
-    # Install dependencies
-    - name: Install requirements
-      run: |
-        python3 -m pip install --upgrade pip setuptools wheel
-        python3 -m pip install -r requirements.txt
-
-    # Generate images
-    - name: Generate images
-      run: |
-        python3 generate_images.py
-      env:
-        ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        EXCLUDED: ${{ secrets.EXCLUDED }}
-        EXCLUDED_LANGS: ${{ secrets.EXCLUDED_LANGS }}
-        EXCLUDE_FORKED_REPOS: true
-
-    # Commit dengan jumlah random 1-6, hanya hari Jumat
     - name: Randomized commits on Friday
+      env:
+        GITHUB_REPO: ${{ github.repository }}
+        GH_PAT: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+        GIT_USER: ${{ secrets.USERNAME }}
+        GIT_EMAIL: ${{ secrets.USER_EMAIL }}
       run: |
-        DAY=$(date +%u)  # Senin=1 ... Jumat=5 ... Minggu=7
-        if [ "$DAY" -eq 5 ]; then
-          git config --global user.name "${{ secrets.USERNAME }}"
-          git config --global user.email "${{ secrets.EMAIL }}"
-
-          # Tentukan jumlah commit acak antara 1 sampai 6
-          COMMITS=$(shuf -i 1-6 -n 1)
-          echo "Akan membuat $COMMITS commit hari ini."
-
-          for i in $(seq 1 $COMMITS); do
-            echo "Commit ke-$i dibuat pada $(date)" >> random_log.txt
-            git add .
-            git commit -m "Update generated files ($i)" || true
-            git push
-          done
-        else
-          echo "Hari ini bukan Jumat, skip commit."
+        set -e
+        
+        DAY=$(date +%u)
+        echo "Hari angka: $DAY"
+        if [ "$DAY" -ne 5 ]; then
+          echo "Bukan Jumat — skip commit."
+          exit 0
         fi
+
+        git config user.name "$GIT_USER"
+        git config user.email "$GIT_EMAIL"
+
+        git remote set-url origin https://x-access-token:${GH_PAT}@github.com/${GITHUB_REPO}.git
+
+        COMMITS=$(shuf -i 1-6 -n 1)
+        echo "Akan membuat $COMMITS commit."
+
+        for i in $(seq 1 $COMMITS); do
+          echo "Commit ke-$i pada $(date -u)" >> random_log.txt
+          git add random_log.txt
+
+          git commit -m "Auto commit #$i" || echo "Tidak ada perubahan untuk di-commit"
+          git push origin HEAD || echo "Push gagal, cek token/permissions"
+          sleep 1
+        done
+
+        echo "Selesai membuat $COMMITS commit."
